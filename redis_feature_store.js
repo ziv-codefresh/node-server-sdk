@@ -1,6 +1,8 @@
 const redis = require('redis'),
   winston = require('winston'),
   dataKind = require('./versioned_data_kind'),
+  fs = require('fs'),
+  path = require('path'),
   CachingStoreWrapper = require('./caching_store_wrapper');
 
 const noop = function(){};
@@ -92,9 +94,25 @@ function redisFeatureStoreInternal(redisOpts, prefix, logger, preconfiguredClien
   store.getAllInternal = (kind, cb) => {
     cb = cb || noop;
     if (!connected) {
-      logger.warn('Attempted to fetch all keys while Redis connection is down');
-      cb(null);
-      return;
+        // modify the default behaviour to work against file
+        logger.warn('Attempted to fetch all keys while Redis connection is down');
+        const filePath = path.join(__dirname, 'features.json');
+        fs.readFile(filePath, { encoding: 'utf-8' }, function (err, obj) {
+            if (!err) {
+                const results = {},
+                    items = obj;
+
+                for (let key in items) {
+                    if (Object.hasOwnProperty.call(items, key)) {
+                        results[key] = JSON.parse(items[key]);
+                    }
+                }
+                cb(results);
+            } else {
+                console.log(err);
+                cb(null);
+            }
+        });
     }
 
     client.hgetall(itemsKey(kind), (err, obj) => {
@@ -138,7 +156,7 @@ function redisFeatureStoreInternal(redisOpts, prefix, logger, preconfiguredClien
     }
 
     multi.set(initedKey, '');
-    
+
     multi.exec(err => {
       if (err) {
         logger.error('Error initializing Redis store', err);
